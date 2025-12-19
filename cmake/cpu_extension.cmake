@@ -188,53 +188,63 @@ list(APPEND CXX_COMPILE_FLAGS_AVX512
     "-mavx512bw"
     "-mavx512dq")
 
-if (FALSE) # FIXME: handle custom ISAs
+# Handle custom ISAs - check for local CPU support OR cross-compilation via env vars
+# For cross-compilation, env vars enable features even without local CPU support
+
+# Check for AVX512BF16 (local CPU or cross-compilation)
+if(NOT MACOSX_FOUND)
     find_isa(${CPUINFO} "avx512_bf16" AVX512BF16_FOUND)
-    if (AVX512BF16_FOUND OR ENABLE_AVX512BF16)
-        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+endif()
+if (AVX512BF16_FOUND OR ENABLE_AVX512BF16)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
             CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12.3)
-            list(APPEND CXX_COMPILE_FLAGS_AVX512 "-mavx512bf16")
-            set(ENABLE_AVX512BF16 ON)
-        else()
-            set(ENABLE_AVX512BF16 OFF)
-            message(WARNING "Disable AVX512-BF16 ISA support, requires gcc/g++ >= 12.3")
-        endif()
+        list(APPEND CXX_COMPILE_FLAGS_AVX512 "-mavx512bf16")
+        set(ENABLE_AVX512BF16 ON)
+        message(STATUS "Enabled AVX512-BF16 ISA support")
     else()
         set(ENABLE_AVX512BF16 OFF)
-        message(WARNING "Disable AVX512-BF16 ISA support, no avx512_bf16 found in local CPU flags." " If cross-compilation is required, please set env VLLM_CPU_AVX512BF16=1.")
+        message(WARNING "Disable AVX512-BF16 ISA support, requires gcc/g++ >= 12.0 (you have ${CMAKE_CXX_COMPILER_VERSION})")
     endif()
+else()
+    set(ENABLE_AVX512BF16 OFF)
+endif()
 
+# Check for AVX512VNNI (local CPU or cross-compilation)
+if(NOT MACOSX_FOUND)
     find_isa(${CPUINFO} "avx512_vnni" AVX512VNNI_FOUND)
-    if (AVX512VNNI_FOUND OR ENABLE_AVX512VNNI)
-        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
-            CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12.3)
-            list(APPEND CXX_COMPILE_FLAGS_AVX512 "-mavx512vnni")
-            set(ENABLE_AVX512VNNI ON)
-        else()
-            set(ENABLE_AVX512VNNI OFF)
-            message(WARNING "Disable AVX512-VNNI ISA support, requires gcc/g++ >= 12.3")
-        endif()
+endif()
+if (AVX512VNNI_FOUND OR ENABLE_AVX512VNNI)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+        CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 8.0)
+        list(APPEND CXX_COMPILE_FLAGS_AVX512 "-mavx512vnni")
+        set(ENABLE_AVX512VNNI ON)
+        message(STATUS "Enabled AVX512-VNNI ISA support")
     else()
         set(ENABLE_AVX512VNNI OFF)
-        message(WARNING "Disable AVX512-VNNI ISA support, no avx512_vnni found in local CPU flags." " If cross-compilation is required, please set env VLLM_CPU_AVX512VNNI=1.")
+        message(WARNING "Disable AVX512-VNNI ISA support, requires gcc/g++ >= 8.0")
     endif()
+else()
+    set(ENABLE_AVX512VNNI OFF)
+endif()
 
+# Check for AMX BF16 (local CPU or cross-compilation)
+if(NOT MACOSX_FOUND)
     find_isa(${CPUINFO} "amx_bf16" AMXBF16_FOUND)
-    if (AMXBF16_FOUND OR ENABLE_AMXBF16)
-        # FIXME add support for AMX
-        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
-            CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 12.3)
-            list(APPEND CXX_COMPILE_FLAGS_AMX "-mamx-bf16" "-mamx-tile")
-            set(ENABLE_AMXBF16 ON)
-            add_compile_definitions(-DCPU_CAPABILITY_AMXBF16)
-        else()
-            set(ENABLE_AMXBF16 OFF)
-            message(WARNING "Disable AMX_BF16 ISA support, requires gcc/g++ >= 12.3")
-        endif()
+endif()
+if (AMXBF16_FOUND OR ENABLE_AMXBF16)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+        CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 11.0)
+        list(APPEND CXX_COMPILE_FLAGS_AVX512 "-mamx-bf16" "-mamx-tile")
+        set(ENABLE_AMXBF16 ON)
+        # Add to AVX512 flags only, not globally
+        list(APPEND CXX_COMPILE_FLAGS_AVX512 "-DCPU_CAPABILITY_AMXBF16")
+        message(STATUS "Enabled AMX-BF16 ISA support")
     else()
         set(ENABLE_AMXBF16 OFF)
-        message(WARNING "Disable AMX_BF16 ISA support, no amx_bf16 found in local CPU flags." " If cross-compilation is required, please set env VLLM_CPU_AMXBF16=1.")
+        message(WARNING "Disable AMX_BF16 ISA support, requires gcc/g++ >= 11.0")
     endif()
+else()
+    set(ENABLE_AMXBF16 OFF)
 endif()
 
 
@@ -390,7 +400,8 @@ if (ENABLE_AVX512BF16 AND ENABLE_AVX512VNNI)
         "csrc/cpu/sgl-kernels/moe_fp8.cpp"
         ${VLLM_EXT_AVX512_SRC}
     )
-    add_compile_definitions(-DCPU_CAPABILITY_AVX512)
+    # Add to AVX512 flags only, not globally (to allow AVX2 and AVX512 targets to coexist)
+    list(APPEND CXX_COMPILE_FLAGS_AVX512 "-DCPU_CAPABILITY_AVX512")
 endif()
 
 set(VLLM_EXT_AVX512_SRC
